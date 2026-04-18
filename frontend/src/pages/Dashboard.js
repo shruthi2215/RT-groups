@@ -16,6 +16,7 @@ import {
 } from 'chart.js';
 import axios from 'axios';
 import { toast } from 'sonner';
+import { PropertyManager } from '../components/PropertyManager';
 
 ChartJS.register(
   CategoryScale,
@@ -325,6 +326,14 @@ export const Dashboard = () => {
             </div>
           </motion.div>
         </div>
+
+        <motion.div
+          {...fadeInUp}
+          transition={{ delay: 0.55 }}
+          className="mb-8"
+        >
+          <PropertyManager />
+        </motion.div>
 
         <motion.div
           {...fadeInUp}

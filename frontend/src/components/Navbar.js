@@ -1,13 +1,15 @@
 import React, { useState, useEffect } from 'react';
 import { Link, useNavigate, useLocation } from 'react-router-dom';
-import { Building2, Menu, X, User, LogOut } from 'lucide-react';
+import { Building2, Menu, X, User, LogOut, Sun, Moon } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
+import { useTheme } from '../context/ThemeContext';
 
 export const Navbar = () => {
   const [isOpen, setIsOpen] = useState(false);
   const [scrolled, setScrolled] = useState(false);
   const navigate = useNavigate();
   const location = useLocation();
+  const { theme, toggleTheme } = useTheme();
   const user = JSON.parse(localStorage.getItem('user') || 'null');
 
   useEffect(() => {
@@ -94,6 +96,14 @@ export const Navbar = () => {
                 Login
               </Link>
             )}
+            <button
+              onClick={toggleTheme}
+              data-testid="theme-toggle-button"
+              className="p-2 rounded-full border border-white/20 text-[#94A3B8] hover:text-[#D4AF37] hover:border-[#D4AF37] transition-colors duration-300"
+              aria-label="Toggle theme"
+            >
+              {theme === 'dark' ? <Sun className="w-4 h-4" /> : <Moon className="w-4 h-4" />}
+            </button>
           </div>
 
           <button

@@ -1,4 +1,4 @@
-from fastapi import FastAPI, APIRouter, HTTPException, Depends, status
+from fastapi import FastAPI, APIRouter, HTTPException, Depends, status, UploadFile, File, Response
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from dotenv import load_dotenv
 from starlette.middleware.cors import CORSMiddleware
@@ -11,6 +11,7 @@ from typing import List, Optional
 import uuid
 from datetime import datetime, timezone, timedelta
 import jwt
+import requests
 from passlib.context import CryptContext
 from twilio.rest import Client
 from emergentintegrations.llm.chat import LlmChat, UserMessage
@@ -30,6 +31,51 @@ security = HTTPBearer()
 
 JWT_SECRET = os.environ.get('JWT_SECRET', 'your-secret-key')
 JWT_ALGORITHM = "HS256"
+
+# Object Storage Configuration
+STORAGE_URL = "https://integrations.emergentagent.com/objstore/api/v1/storage"
+EMERGENT_KEY = os.environ.get("EMERGENT_LLM_KEY")
+APP_NAME = "rtgroups"
+storage_key: Optional[str] = None
+
+
+def init_storage():
+    global storage_key
+    if storage_key:
+        return storage_key
+    try:
+        resp = requests.post(f"{STORAGE_URL}/init", json={"emergent_key": EMERGENT_KEY}, timeout=30)
+        resp.raise_for_status()
+        storage_key = resp.json()["storage_key"]
+        return storage_key
+    except Exception as e:
+        logging.error(f"Storage init failed: {e}")
+        return None
+
+
+def put_object(path: str, data: bytes, content_type: str) -> dict:
+    key = init_storage()
+    if not key:
+        raise HTTPException(status_code=503, detail="Storage service unavailable")
+    resp = requests.put(
+        f"{STORAGE_URL}/objects/{path}",
+        headers={"X-Storage-Key": key, "Content-Type": content_type},
+        data=data, timeout=120
+    )
+    resp.raise_for_status()
+    return resp.json()
+
+
+def get_object(path: str) -> tuple:
+    key = init_storage()
+    if not key:
+        raise HTTPException(status_code=503, detail="Storage service unavailable")
+    resp = requests.get(
+        f"{STORAGE_URL}/objects/{path}",
+        headers={"X-Storage-Key": key}, timeout=60
+    )
+    resp.raise_for_status()
+    return resp.content, resp.headers.get("Content-Type", "application/octet-stream")
 
 try:
     twilio_client = Client(
@@ -169,6 +215,69 @@ def verify_token(credentials: HTTPAuthorizationCredentials = Depends(security)):
 @api_router.get("/")
 async def root():
     return {"message": "Real Estate API"}
+
+
+@api_router.post("/upload/image")
+async def upload_image(file: UploadFile = File(...), token_data: dict = Depends(verify_token)):
+    if token_data['role'] != 'admin':
+        raise HTTPException(status_code=403, detail="Admin access required")
+    
+    if not file.content_type or not file.content_type.startswith('image/'):
+        raise HTTPException(status_code=400, detail="File must be an image")
+    
+    ext = file.filename.split(".")[-1].lower() if "." in file.filename else "jpg"
+    if ext not in ['jpg', 'jpeg', 'png', 'gif', 'webp']:
+        raise HTTPException(status_code=400, detail="Invalid image format")
+    
+    file_id = str(uuid.uuid4())
+    path = f"{APP_NAME}/properties/{file_id}.{ext}"
+    data = await file.read()
+    
+    if len(data) > 10 * 1024 * 1024:
+        raise HTTPException(status_code=400, detail="File too large (max 10MB)")
+    
+    try:
+        result = put_object(path, data, file.content_type)
+    except Exception as e:
+        logging.error(f"Upload failed: {e}")
+        raise HTTPException(status_code=500, detail="Upload failed")
+    
+    await db.files.insert_one({
+        "id": file_id,
+        "storage_path": result["path"],
+        "original_filename": file.filename,
+        "content_type": file.content_type,
+        "size": result["size"],
+        "uploaded_by": token_data['user_id'],
+        "is_deleted": False,
+        "created_at": datetime.now(timezone.utc).isoformat()
+    })
+    
+    return {
+        "id": file_id,
+        "url": f"/api/files/{result['path']}",
+        "size": result["size"]
+    }
+
+
+@api_router.get("/files/{path:path}")
+async def download_file(path: str):
+    record = await db.files.find_one({"storage_path": path, "is_deleted": False}, {"_id": 0})
+    if not record:
+        raise HTTPException(status_code=404, detail="File not found")
+    
+    try:
+        data, content_type = get_object(path)
+    except Exception as e:
+        logging.error(f"Download failed: {e}")
+        raise HTTPException(status_code=500, detail="Download failed")
+    
+    return Response(
+        content=data,
+        media_type=record.get("content_type", content_type),
+        headers={"Cache-Control": "public, max-age=3600"}
+    )
+
 
 @api_router.post("/auth/register")
 async def register(user_data: UserRegister):
@@ -447,6 +556,9 @@ async def shutdown_db_client():
 
 @app.on_event("startup")
 async def seed_admin():
+    # Initialize object storage
+    init_storage()
+    
     admin = await db.users.find_one({"email": "admin@rtgroups.info"}, {"_id": 0})
     if not admin:
         admin_user = User(

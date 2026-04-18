@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { Link } from 'react-router-dom';
 import { motion } from 'framer-motion';
 import { Search, MapPin, Bed, Bath, Square, Heart, Filter } from 'lucide-react';
 import axios from 'axios';
@@ -235,37 +236,45 @@ export const Properties = () => {
                   data-testid={`property-card-${index}`}
                   className="bg-[#121B2F] border border-white/5 rounded-2xl overflow-hidden hover:-translate-y-2 hover:border-white/20 transition-all duration-300 group"
                 >
-                  <div className="relative h-48 overflow-hidden">
-                    <img
-                      src={property.images[0] || 'https://images.unsplash.com/photo-1762811054947-605b20298615'}
-                      alt={property.title}
-                      className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-500"
-                    />
-                    <div className="absolute inset-0 bg-gradient-to-t from-[#121B2F] to-transparent" />
-                    {user && (
-                      <button
-                        onClick={() => toggleFavorite(property.id)}
-                        data-testid={`favorite-button-${index}`}
-                        className="absolute top-4 right-4 p-2 bg-[#0A0F1D]/80 backdrop-blur-sm rounded-full hover:scale-110 transition-transform"
-                      >
-                        <Heart
-                          className={`w-5 h-5 ${favorites.includes(property.id) ? 'fill-[#D4AF37] text-[#D4AF37]' : 'text-white'}`}
-                        />
-                      </button>
-                    )}
-                    <div className="absolute bottom-4 left-4">
-                      <span className="bg-[#D4AF37] text-[#0A0F1D] px-3 py-1 rounded-full text-sm font-semibold">
-                        {property.type}
-                      </span>
+                  <Link to={`/properties/${property.id}`} className="block">
+                    <div className="relative h-48 overflow-hidden">
+                      <img
+                        src={property.images[0]?.startsWith('/') ? `${BACKEND_URL}${property.images[0]}` : (property.images[0] || 'https://images.unsplash.com/photo-1762811054947-605b20298615')}
+                        alt={property.title}
+                        className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-500"
+                      />
+                      <div className="absolute inset-0 bg-gradient-to-t from-[#121B2F] to-transparent" />
+                      {user && (
+                        <button
+                          onClick={(e) => {
+                            e.preventDefault();
+                            e.stopPropagation();
+                            toggleFavorite(property.id);
+                          }}
+                          data-testid={`favorite-button-${index}`}
+                          className="absolute top-4 right-4 p-2 bg-[#0A0F1D]/80 backdrop-blur-sm rounded-full hover:scale-110 transition-transform"
+                        >
+                          <Heart
+                            className={`w-5 h-5 ${favorites.includes(property.id) ? 'fill-[#D4AF37] text-[#D4AF37]' : 'text-white'}`}
+                          />
+                        </button>
+                      )}
+                      <div className="absolute bottom-4 left-4">
+                        <span className="bg-[#D4AF37] text-[#0A0F1D] px-3 py-1 rounded-full text-sm font-semibold">
+                          {property.type}
+                        </span>
+                      </div>
                     </div>
-                  </div>
+                  </Link>
                   <div className="p-6">
-                    <h3
-                      className="text-xl font-semibold text-white mb-2"
-                      style={{ fontFamily: 'Playfair Display, serif' }}
-                    >
-                      {property.title}
-                    </h3>
+                    <Link to={`/properties/${property.id}`}>
+                      <h3
+                        className="text-xl font-semibold text-white mb-2 hover:text-[#D4AF37] transition-colors"
+                        style={{ fontFamily: 'Playfair Display, serif' }}
+                      >
+                        {property.title}
+                      </h3>
+                    </Link>
                     <div className="flex items-center text-[#94A3B8] text-sm mb-4">
                       <MapPin className="w-4 h-4 mr-1" />
                       {property.location}
@@ -302,12 +311,13 @@ export const Properties = () => {
                           {formatPrice(property.price)}
                         </p>
                       </div>
-                      <button
-                        onClick={() => window.open('https://wa.me/918105854999?text=I am interested in ' + property.title, '_blank')}
+                      <Link
+                        to={`/properties/${property.id}`}
+                        data-testid={`view-details-button-${index}`}
                         className="bg-[#D4AF37] text-[#0A0F1D] px-4 py-2 rounded-full font-medium text-sm hover:bg-[#F3C94D] transition-colors duration-300"
                       >
-                        Inquire
-                      </button>
+                        View Details
+                      </Link>
                     </div>
                   </div>
                 </motion.div>

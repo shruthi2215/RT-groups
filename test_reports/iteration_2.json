@@ -1,0 +1,42 @@
+{
+  "summary": "Tested 2 new endpoints (POST /api/upload/image, GET /api/files/{path}) and re-ran all 33 endpoints from iteration_1. 42/42 pytest tests PASSED (100%). Upload/download uses Emergent object storage via EMERGENT_LLM_KEY and works end-to-end: admin uploads PNG (in-memory generated), server returns {id, url=/api/files/rtgroups/properties/<uuid>.png, size}, public GET returns correct image/* content. Verified 403 for non-admin upload, 401/403 for missing token, 400 for .txt and .bmp, 400 for >10MB payload, and 404 for non-existent file path. Integration verified by creating a property with the uploaded URL and refetching both the property and the image.",
+  "backend_issues": {
+    "critical": [],
+    "minor": [
+      {"endpoint": "POST /api/upload/image", "issue": "Size-limit check (10MB) happens AFTER the full file is read into memory via `await file.read()`. For very large uploads this still allocates the full buffer before 400ing. Consider streaming/Content-Length pre-check for defense-in-depth."},
+      {"endpoint": "POST /api/upload/image", "issue": "Extension is parsed from user-supplied filename only; MIME sniffing of the actual bytes is not done. A file named .png with non-image content would still pass the content_type check if client lies (low risk since content_type is client-supplied too)."},
+      {"endpoint": "GET /api/files/{path}", "issue": "No auth check, which matches 'public' spec. However records marked is_deleted=True correctly return 404 - good. No rate limiting on this public endpoint, abuse risk for object storage egress."},
+      {"endpoint": "POST /api/upload/image", "issue": "`file.filename` is used without None-check; if a client omits filename, split('.')[-1] falls back to 'jpg' but the initial attribute access could still raise. Minor."}
+    ]
+  },
+  "frontend_issues": {"ui_bugs": [], "integration_issues": [], "design_issues": []},
+  "test_report_links": [
+    "/app/backend/tests/test_upload.py",
+    "/app/backend/tests/backend_test.py",
+    "/app/test_reports/pytest/pytest_results.xml",
+    "/app/test_reports/pytest/upload_results.xml"
+  ],
+  "action_items": [
+    "Optional hardening: add Content-Length header pre-check before reading full file body into memory on /api/upload/image.",
+    "Optional hardening: add rate limiting on public GET /api/files/{path} to mitigate object-storage egress abuse.",
+    "Optional: validate file.filename is not None before splitting extension."
+  ],
+  "critical_code_review_comments": [
+    "init_storage() is called at startup AND lazily on each put/get - good resilience, but the module-level global `storage_key` is not thread-safe; for FastAPI single-worker it's fine, but gunicorn with >1 worker will each init independently (acceptable since it's idempotent).",
+    "put_object / get_object are synchronous `requests` calls inside async FastAPI handlers - they will block the event loop for the duration of the transfer. Should switch to httpx.AsyncClient for true async I/O, especially since uploads can be up to 10MB.",
+    "server.py has grown to 616 lines (was 500) - still single-file. The upload/storage logic (lines 35-79) is a natural candidate to extract into /app/backend/storage.py.",
+    "GET /api/files/{path} reads the entire object into memory and returns it as Response(content=bytes). Consider StreamingResponse for larger files to reduce memory pressure.",
+    "Uploaded file record in db.files is never exposed via an API (no listing/delete endpoint). If this is intentional, fine; otherwise admins cannot manage uploaded assets.",
+    "No virus/malware scanning on uploaded files - acceptable for MVP but worth noting for production."
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_upload.py"
+  ],
+  "success_rate": {"backend": "100% (42/42)", "frontend": "N/A (skipped per request)"},
+  "test_credentials": "admin@rtgroups.info / RTGroups@2026 - verified working. TEST_ prefixed users created dynamically per session.",
+  "seed_data_creation": "Each upload test creates a new tiny in-memory PNG (generated via struct+zlib, ~80 bytes) and uploads it. The integration test also creates 1 TEST_PropWithImg property referencing the uploaded image URL. No manual DB seeding. All test data prefixed TEST_ for easy cleanup.",
+  "retest_needed": false,
+  "should_main_agent_self_test": true,
+  "context_for_next_testing_agent": "Upload + download flow is fully working via Emergent object storage. Reusable pytest suite: /app/backend/tests/backend_test.py (33 tests) + /app/backend/tests/test_upload.py (9 tests). Helper `_make_png_bytes()` in test_upload.py generates a valid minimal PNG without needing Pillow. The 10MB-reject test sends an actual 10MB+1 body which can take ~20s on slow networks; timeout is set to 120s. Admin creds in /app/memory/test_credentials.md.",
+  "rca of the issue": "N/A - no failing tests this iteration."
+}
