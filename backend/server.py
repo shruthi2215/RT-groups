@@ -386,6 +386,39 @@ async def get_property(property_id: str):
         prop['created_at'] = datetime.fromisoformat(prop['created_at'])
     return prop
 
+
+@api_router.put("/properties/{property_id}", response_model=Property)
+async def update_property(property_id: str, property_data: PropertyCreate, token_data: dict = Depends(verify_token)):
+    if token_data['role'] != 'admin':
+        raise HTTPException(status_code=403, detail="Admin access required")
+    
+    existing = await db.properties.find_one({"id": property_id}, {"_id": 0})
+    if not existing:
+        raise HTTPException(status_code=404, detail="Property not found")
+    
+    update_data = property_data.model_dump()
+    await db.properties.update_one({"id": property_id}, {"$set": update_data})
+    
+    updated = await db.properties.find_one({"id": property_id}, {"_id": 0})
+    if isinstance(updated['created_at'], str):
+        updated['created_at'] = datetime.fromisoformat(updated['created_at'])
+    return updated
+
+
+@api_router.delete("/properties/{property_id}")
+async def delete_property(property_id: str, token_data: dict = Depends(verify_token)):
+    if token_data['role'] != 'admin':
+        raise HTTPException(status_code=403, detail="Admin access required")
+    
+    result = await db.properties.delete_one({"id": property_id})
+    if result.deleted_count == 0:
+        raise HTTPException(status_code=404, detail="Property not found")
+    
+    # Also remove from any user's favorites
+    await db.users.update_many({}, {"$pull": {"favorites": property_id}})
+    
+    return {"message": "Property deleted successfully"}
+
 @api_router.post("/users/favorites/{property_id}")
 async def toggle_favorite(property_id: str, token_data: dict = Depends(verify_token)):
     user_doc = await db.users.find_one({"id": token_data['user_id']}, {"_id": 0})
