@@ -33,7 +33,7 @@ export const Login = () => {
       localStorage.setItem('token', response.data.token);
       localStorage.setItem('user', JSON.stringify(response.data.user));
       toast.success('Login successful!');
-      if (response.data.user.role === 'admin') {
+      if (response.data.user.role === 'admin' || response.data.user.role === 'super_admin') {
         navigate('/dashboard');
       } else {
         navigate('/');

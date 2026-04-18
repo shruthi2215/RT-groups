@@ -69,7 +69,7 @@ export const Navbar = () => {
             ))}
             {user ? (
               <>
-                {user.role === 'admin' && (
+                {(user.role === 'admin' || user.role === 'super_admin') && (
                   <Link
                     to="/dashboard"
                     data-testid="nav-dashboard"
@@ -138,7 +138,7 @@ export const Navbar = () => {
               ))}
               {user ? (
                 <>
-                  {user.role === 'admin' && (
+                  {(user.role === 'admin' || user.role === 'super_admin') && (
                     <Link
                       to="/dashboard"
                       onClick={() => setIsOpen(false)}

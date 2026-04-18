@@ -212,6 +212,29 @@ def verify_token(credentials: HTTPAuthorizationCredentials = Depends(security)):
     except jwt.InvalidTokenError:
         raise HTTPException(status_code=401, detail="Invalid token")
 
+
+def require_admin(token_data: dict):
+    """Allows admin OR super_admin"""
+    if token_data.get('role') not in ('admin', 'super_admin'):
+        raise HTTPException(status_code=403, detail="Admin access required")
+
+
+def require_super_admin(token_data: dict):
+    """Only super_admin"""
+    if token_data.get('role') != 'super_admin':
+        raise HTTPException(status_code=403, detail="Super admin access required")
+
+
+class AdminCreate(BaseModel):
+    name: str
+    email: EmailStr
+    phone: str
+    password: str
+
+
+class RoleUpdate(BaseModel):
+    role: str
+
 @api_router.get("/")
 async def root():
     return {"message": "Real Estate API"}
@@ -219,7 +242,7 @@ async def root():
 
 @api_router.post("/upload/image")
 async def upload_image(file: UploadFile = File(...), token_data: dict = Depends(verify_token)):
-    if token_data['role'] != 'admin':
+    if token_data['role'] not in ('admin', 'super_admin'):
         raise HTTPException(status_code=403, detail="Admin access required")
     
     if not file.content_type or not file.content_type.startswith('image/'):
@@ -348,7 +371,7 @@ async def get_current_user(token_data: dict = Depends(verify_token)):
 
 @api_router.post("/properties", response_model=Property)
 async def create_property(property_data: PropertyCreate, token_data: dict = Depends(verify_token)):
-    if token_data['role'] != 'admin':
+    if token_data['role'] not in ('admin', 'super_admin'):
         raise HTTPException(status_code=403, detail="Admin access required")
     
     property_obj = Property(**property_data.model_dump())
@@ -389,7 +412,7 @@ async def get_property(property_id: str):
 
 @api_router.put("/properties/{property_id}", response_model=Property)
 async def update_property(property_id: str, property_data: PropertyCreate, token_data: dict = Depends(verify_token)):
-    if token_data['role'] != 'admin':
+    if token_data['role'] not in ('admin', 'super_admin'):
         raise HTTPException(status_code=403, detail="Admin access required")
     
     existing = await db.properties.find_one({"id": property_id}, {"_id": 0})
@@ -407,7 +430,7 @@ async def update_property(property_id: str, property_data: PropertyCreate, token
 
 @api_router.delete("/properties/{property_id}")
 async def delete_property(property_id: str, token_data: dict = Depends(verify_token)):
-    if token_data['role'] != 'admin':
+    if token_data['role'] not in ('admin', 'super_admin'):
         raise HTTPException(status_code=403, detail="Admin access required")
     
     result = await db.properties.delete_one({"id": property_id})
@@ -462,7 +485,7 @@ async def create_booking(booking_data: BookingCreate, token_data: dict = Depends
 
 @api_router.get("/bookings", response_model=List[Booking])
 async def get_bookings(token_data: dict = Depends(verify_token)):
-    if token_data['role'] == 'admin':
+    if token_data['role'] in ('admin', 'super_admin'):
         bookings = await db.bookings.find({}, {"_id": 0}).to_list(1000)
     else:
         bookings = await db.bookings.find({"user_id": token_data['user_id']}, {"_id": 0}).to_list(1000)
@@ -474,7 +497,7 @@ async def get_bookings(token_data: dict = Depends(verify_token)):
 
 @api_router.patch("/bookings/{booking_id}/status")
 async def update_booking_status(booking_id: str, status: str, token_data: dict = Depends(verify_token)):
-    if token_data['role'] != 'admin':
+    if token_data['role'] not in ('admin', 'super_admin'):
         raise HTTPException(status_code=403, detail="Admin access required")
     
     result = await db.bookings.update_one({"id": booking_id}, {"$set": {"status": status}})
@@ -492,7 +515,7 @@ async def create_inquiry(inquiry_data: InquiryCreate):
 
 @api_router.get("/inquiries", response_model=List[Inquiry])
 async def get_inquiries(token_data: dict = Depends(verify_token)):
-    if token_data['role'] != 'admin':
+    if token_data['role'] not in ('admin', 'super_admin'):
         raise HTTPException(status_code=403, detail="Admin access required")
     
     inquiries = await db.inquiries.find({}, {"_id": 0}).to_list(1000)
@@ -529,7 +552,7 @@ async def chat(message: ChatMessage):
 
 @api_router.get("/analytics/stats", response_model=AnalyticsStats)
 async def get_analytics_stats(token_data: dict = Depends(verify_token)):
-    if token_data['role'] != 'admin':
+    if token_data['role'] not in ('admin', 'super_admin'):
         raise HTTPException(status_code=403, detail="Admin access required")
     
     total_users = await db.users.count_documents({})
@@ -546,7 +569,7 @@ async def get_analytics_stats(token_data: dict = Depends(verify_token)):
 
 @api_router.get("/analytics/traffic")
 async def get_traffic_data(token_data: dict = Depends(verify_token)):
-    if token_data['role'] != 'admin':
+    if token_data['role'] not in ('admin', 'super_admin'):
         raise HTTPException(status_code=403, detail="Admin access required")
     
     return {
@@ -558,7 +581,7 @@ async def get_traffic_data(token_data: dict = Depends(verify_token)):
 
 @api_router.get("/users")
 async def get_all_users(token_data: dict = Depends(verify_token)):
-    if token_data['role'] != 'admin':
+    if token_data['role'] not in ('admin', 'super_admin'):
         raise HTTPException(status_code=403, detail="Admin access required")
     
     users = await db.users.find({}, {"_id": 0, "password_hash": 0}).to_list(1000)
@@ -566,6 +589,66 @@ async def get_all_users(token_data: dict = Depends(verify_token)):
         if isinstance(user['created_at'], str):
             user['created_at'] = datetime.fromisoformat(user['created_at'])
     return users
+
+
+@api_router.post("/admin/create-admin")
+async def create_admin(admin_data: AdminCreate, token_data: dict = Depends(verify_token)):
+    require_super_admin(token_data)
+    
+    existing = await db.users.find_one({"email": admin_data.email}, {"_id": 0})
+    if existing:
+        raise HTTPException(status_code=400, detail="Email already registered")
+    
+    new_admin = User(
+        name=admin_data.name,
+        email=admin_data.email,
+        phone=admin_data.phone,
+        password_hash=pwd_context.hash(admin_data.password),
+        role="admin"
+    )
+    doc = new_admin.model_dump()
+    doc['created_at'] = doc['created_at'].isoformat()
+    await db.users.insert_one(doc)
+    
+    return {
+        "message": "Admin created successfully",
+        "user": {"id": new_admin.id, "name": new_admin.name, "email": new_admin.email, "role": new_admin.role}
+    }
+
+
+@api_router.patch("/admin/users/{user_id}/role")
+async def update_user_role(user_id: str, role_data: RoleUpdate, token_data: dict = Depends(verify_token)):
+    require_super_admin(token_data)
+    
+    if role_data.role not in ('user', 'admin', 'super_admin'):
+        raise HTTPException(status_code=400, detail="Invalid role")
+    
+    if user_id == token_data['user_id']:
+        raise HTTPException(status_code=400, detail="Cannot change your own role")
+    
+    result = await db.users.update_one({"id": user_id}, {"$set": {"role": role_data.role}})
+    if result.matched_count == 0:
+        raise HTTPException(status_code=404, detail="User not found")
+    
+    return {"message": f"User role updated to {role_data.role}"}
+
+
+@api_router.delete("/admin/users/{user_id}")
+async def delete_user(user_id: str, token_data: dict = Depends(verify_token)):
+    require_super_admin(token_data)
+    
+    if user_id == token_data['user_id']:
+        raise HTTPException(status_code=400, detail="Cannot delete yourself")
+    
+    target = await db.users.find_one({"id": user_id}, {"_id": 0})
+    if not target:
+        raise HTTPException(status_code=404, detail="User not found")
+    
+    if target.get('role') == 'super_admin':
+        raise HTTPException(status_code=400, detail="Cannot delete another super admin")
+    
+    await db.users.delete_one({"id": user_id})
+    return {"message": "User deleted successfully"}
 
 app.include_router(api_router)
 
@@ -591,6 +674,21 @@ async def shutdown_db_client():
 async def seed_admin():
     # Initialize object storage
     init_storage()
+    
+    # Seed Super Admin
+    super_admin = await db.users.find_one({"email": "superadmin@rtgroups.info"}, {"_id": 0})
+    if not super_admin:
+        super_admin_user = User(
+            name="Super Admin",
+            email="superadmin@rtgroups.info",
+            phone="+918105854999",
+            password_hash=pwd_context.hash("SuperAdmin@2026"),
+            role="super_admin"
+        )
+        doc = super_admin_user.model_dump()
+        doc['created_at'] = doc['created_at'].isoformat()
+        await db.users.insert_one(doc)
+        logger.info("Super Admin user created")
     
     admin = await db.users.find_one({"email": "admin@rtgroups.info"}, {"_id": 0})
     if not admin:

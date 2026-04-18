@@ -17,6 +17,7 @@ import {
 import axios from 'axios';
 import { toast } from 'sonner';
 import { PropertyManager } from '../components/PropertyManager';
+import { SuperAdminPanel } from '../components/SuperAdminPanel';
 
 ChartJS.register(
   CategoryScale,
@@ -48,7 +49,7 @@ export const Dashboard = () => {
   const user = JSON.parse(localStorage.getItem('user') || 'null');
 
   useEffect(() => {
-    if (!user || user.role !== 'admin') {
+    if (!user || (user.role !== 'admin' && user.role !== 'super_admin')) {
       toast.error('Admin access required');
       navigate('/login');
       return;
@@ -194,9 +195,9 @@ export const Dashboard = () => {
             className="text-4xl sm:text-5xl font-bold text-white mb-4"
             style={{ fontFamily: 'Playfair Display, serif' }}
           >
-            Admin <span className="text-[#D4AF37]">Dashboard</span>
+            {user.role === 'super_admin' ? 'Super Admin' : 'Admin'} <span className="text-[#D4AF37]">Dashboard</span>
           </h1>
-          <p className="text-[#94A3B8]">Monitor and manage your business analytics</p>
+          <p className="text-[#94A3B8]">Welcome back, {user.name}. Monitor and manage your business analytics</p>
         </motion.div>
 
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-12">
@@ -338,41 +339,52 @@ export const Dashboard = () => {
         <motion.div
           {...fadeInUp}
           transition={{ delay: 0.6 }}
-          className="bg-[#121B2F] border border-white/5 rounded-2xl p-6"
         >
-          <h2 className="text-xl font-semibold text-white mb-6">User Management</h2>
-          <div className="overflow-x-auto" data-testid="users-table">
-            <table className="w-full">
-              <thead>
-                <tr className="border-b border-white/5">
-                  <th className="text-left text-[#94A3B8] text-sm font-medium py-3">Name</th>
-                  <th className="text-left text-[#94A3B8] text-sm font-medium py-3">Email</th>
-                  <th className="text-left text-[#94A3B8] text-sm font-medium py-3">Phone</th>
-                  <th className="text-left text-[#94A3B8] text-sm font-medium py-3">Role</th>
-                </tr>
-              </thead>
-              <tbody>
-                {users.slice(0, 10).map((u, index) => (
-                  <tr key={u.id} className="border-b border-white/5">
-                    <td className="text-white py-3">{u.name}</td>
-                    <td className="text-[#94A3B8] py-3">{u.email}</td>
-                    <td className="text-[#94A3B8] py-3">{u.phone}</td>
-                    <td className="py-3">
-                      <span
-                        className={`px-3 py-1 rounded-full text-xs font-medium ${
-                          u.role === 'admin'
-                            ? 'bg-[#D4AF37]/20 text-[#D4AF37]'
-                            : 'bg-[#94A3B8]/20 text-[#94A3B8]'
-                        }`}
-                      >
-                        {u.role}
-                      </span>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
+          {user.role === 'super_admin' ? (
+            <SuperAdminPanel
+              users={users}
+              onRefresh={fetchDashboardData}
+              currentUserId={user.id}
+            />
+          ) : (
+            <div className="bg-[#121B2F] border border-white/5 rounded-2xl p-6">
+              <h2 className="text-xl font-semibold text-white mb-6">Users (View Only)</h2>
+              <div className="overflow-x-auto" data-testid="users-table">
+                <table className="w-full">
+                  <thead>
+                    <tr className="border-b border-white/5">
+                      <th className="text-left text-[#94A3B8] text-sm font-medium py-3">Name</th>
+                      <th className="text-left text-[#94A3B8] text-sm font-medium py-3">Email</th>
+                      <th className="text-left text-[#94A3B8] text-sm font-medium py-3">Phone</th>
+                      <th className="text-left text-[#94A3B8] text-sm font-medium py-3">Role</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {users.slice(0, 10).map((u) => (
+                      <tr key={u.id} className="border-b border-white/5">
+                        <td className="text-white py-3">{u.name}</td>
+                        <td className="text-[#94A3B8] py-3">{u.email}</td>
+                        <td className="text-[#94A3B8] py-3">{u.phone}</td>
+                        <td className="py-3">
+                          <span
+                            className={`px-3 py-1 rounded-full text-xs font-medium ${
+                              u.role === 'super_admin'
+                                ? 'bg-[#D4AF37]/20 text-[#D4AF37]'
+                                : u.role === 'admin'
+                                ? 'bg-blue-500/20 text-blue-400'
+                                : 'bg-[#94A3B8]/20 text-[#94A3B8]'
+                            }`}
+                          >
+                            {u.role === 'super_admin' ? 'Super Admin' : u.role === 'admin' ? 'Admin' : 'User'}
+                          </span>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          )}
         </motion.div>
       </div>
     </div>
